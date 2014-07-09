@@ -3,9 +3,10 @@ pg_bman
 
 Yet another backup tool for PostgreSQL
 
-sshを使わず、標準の通信手段(libpq)だけでオンラインのフルバックアップとインクリメンタルバックアップをとるツール。
+リモートホストにバックアップできるpg_rmanみたいなツール。
 
-リモートホストにバックアップできるpg_rmanみたいなツール。とりあえずフィジビリティスタディ用に大急ぎで作ってみた。
+sshを使わず、標準の通信手段(libpq)だけでオンラインのフルバックアップとインクリメンタルバックアップするにはどうすべきか、検討するため、とりあえず大急ぎで作ってみた。
+
 
 
 ## SETUP
@@ -27,8 +28,8 @@ postgresql.confを編集。
 
 pg_hba.confの編集。
 
-    host    all             all  xxx.xxx.xxx.0/24       trust # バックアップServeからアクセス
-    host    replication     all  xxx.xxx.xxx.0/24       trust #　バックアップServeからアクセス
+    host    all             all  xxx.xxx.xxx.0/24       trust # バックアップServerからアクセス
+    host    replication     all  xxx.xxx.xxx.0/24       trust #　バックアップServerからアクセス
 
 
 Extensionのインストール。アーカイブログ領域を$PGDATA以下にする場合は、このExtensionのインストールは不要。
