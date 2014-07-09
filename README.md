@@ -8,7 +8,6 @@ Yet another backup tool for PostgreSQL
 sshを使わず、標準の通信手段(libpq)だけでオンラインのフルバックアップとインクリメンタルバックアップするにはどうすべきか、検討するため、とりあえず大急ぎで作ってみた。
 
 
-
 ## SETUP
 
 ### PostgreSQL Server側
