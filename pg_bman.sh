@@ -16,13 +16,15 @@
 ##-------------------------
 ## Backup Server
 ##-------------------------
-BASEDIR="/home/postgres/BACKUP"
+
+BASEDIR="/home/postgres/BACKUP/"
 PG_BASEBACKUP="/usr/local/pgsql/bin/pg_basebackup"
 PG_ARCHIVEBACKUP="/usr/local/bin/pg_archivebackup"
 
 ##-------------------------
 ## PostgreSQL Server
 ##-------------------------
+
 ARCHIVINGLOG_DIR="/home/postgres/archives"
 
 HOST="127.0.0.1"
@@ -35,14 +37,21 @@ PORT="5432"
 ##===========================================
 full_backup () {
     v=""
-    BASEBACKUPDIR=${BASEDIR}/Basebackup${TIMESTAMP}
-    mkdir -p $BASEBACKUPDIR/fullbackup
+    basebackup_dir=${BASEDIR}/Basebackup${TIMESTAMP}
+    mkdir -p $basebackup_dir/fullbackup
     if [[ $VERBOSE -gt 0 ]]; then
-	echo "INFO: make directory:$BASEBACKUPDIR/fullbackup"
+	echo "INFO: make directory:$basebackup_dir/fullbackup"
 	v="-v"
     fi
-    
-    $PG_BASEBACKUP -h $HOST -U $USER -F t -X fetch -D $BASEBACKUPDIR/fullbackup $v
+
+    ## execute pg_basebackup
+    $PG_BASEBACKUP -h $HOST -U $USER -F t -X fetch -D $basebackup_dir/fullbackup $v
+
+    ## write pg_xlog contents.
+    base_archivinglogs=`tar tf $basebackup_dir/fullbackup/base.tar \
+	| grep pg_xlog | awk -F/ '{if ($2 != "") print $2}'`
+    echo "$base_archivinglogs" > $basebackup_dir/fullbackup/.pg_xlog
+
     echo "MESSAGE: FULL BACKUP done."
 }
 
@@ -50,15 +59,15 @@ full_backup () {
 ## Incremental backup
 ##===========================================
 ARCHIVINGLOGS=""
+BASE_TIMELINE=""
 CURRENT_ARCHVINGLOGS=""
-TIMELINES=""
 CURRENT_TIMELINES=""
 
 listup_archivinglogs () {
     latest_basebackup=$1
     # base backup
-    base_archivinglogs=`tar tf $latest_basebackup/fullbackup/base.tar \
-	| grep pg_xlog | awk -F/ '{if ($2 != "") print $2}'`
+    base_archivinglogs=`cat $latest_basebackup/fullbackup/.pg_xlog`
+    BASE_TIMELINE=`echo -e "$base_archivinglogs" | cut -c 1-8 | sort | uniq | head -1`
 
     # incremental backup
     incbackup_archivinglogs=`ls -1 -d $latest_basebackup/incrementalbackup*/* 2>/dev/null`
@@ -68,7 +77,6 @@ listup_archivinglogs () {
     fi
     # merge all archiving logs
     ARCHIVINGLOGS=`echo -e "${base_archivinglogs}\n${inc_archivinglogs}" | sort | sed '/^$/d' | uniq`
-    TIMELINES=`echo -e "$ARCHIVINGLOGS" | cut -c 1-8 | sort | uniq`
 }
 
 listup_current_archivinglogs () {
@@ -105,40 +113,35 @@ incremental_backup () {
 ## list up current archiveing logs
     listup_current_archivinglogs
 
-## check TIMELINES
-    if [[ "$TIMELINES" !=  "$CURRENT_TIMELINES" ]];then
-	echo "EMERGENCY STOP:  Servers's Timeline is different"
-	echo "  Recommend a full backup."
-	exit -1
-    fi
-    
 ## get new archiving logs
     for current_tl in $CURRENT_TIMELINES ;do
-	LATEST_SEGMENT=`echo -e "$ARCHIVINGLOGS" | grep ^$current_tl | sort -r | head -1`
-	for SEGMENT in `echo -e "$CURRENT_ARCHVINGLOGS" | grep ^$current_tl | sort -r` ; do
-	    if [[ $LATEST_SEGMENT < $SEGMENT ]]; then
-		if [[ ! -d $INCREMENTALBACKUPDIR ]]; then
-		    mkdir $INCREMENTALBACKUPDIR
-		    if [[ $VERBOSE -gt 0 ]]; then
-			echo "INFO: make directory:$INCREMENTALBACKUPDIR"
+	if [[ $current_tl -eq $BASE_TIMELINE ]]; then
+	    LATEST_SEGMENT=`echo -e "$ARCHIVINGLOGS" | grep ^$current_tl | sort -r | head -1`
+	    for SEGMENT in `echo -e "$CURRENT_ARCHVINGLOGS" | grep ^$current_tl | sort -r` ; do
+		if [[ $LATEST_SEGMENT < $SEGMENT ]]; then
+		    if [[ ! -d $INCREMENTALBACKUPDIR ]]; then
+			mkdir $INCREMENTALBACKUPDIR
+			if [[ $VERBOSE -gt 0 ]]; then
+			    echo "INFO: make directory:$INCREMENTALBACKUPDIR"
+			fi
+		    fi
+		    # get ArchivingLog
+		    ${PG_ARCHIVEBACKUP} -h ${HOST} -U ${USER} -d ${DB} -c get \
+			-a ${ARCHIVINGLOG_DIR} -w ${SEGMENT} -f ${INCREMENTALBACKUPDIR}/${SEGMENT}
+		    if [[ $? -ne 0 ]]; then
+			echo "ERROR: Could not get $SEGMENT"
+			exit -1
+		    else
+			num_log=$num_log+1
+			if [[ $VERBOSE -gt 0 ]]; then
+			    echo "INFO:backup $SEGMENT to $INCREMENTALBACKUPDIR"
+			fi
 		    fi
 		fi
-		# get ArchivingLog
-		${PG_ARCHIVEBACKUP} -h ${HOST} -U ${USER} -d ${DB} -c get \
-		    -a ${ARCHIVINGLOG_DIR} -w ${SEGMENT} -f ${INCREMENTALBACKUPDIR}/${SEGMENT}
-		if [[ $? -ne 0 ]]; then
-		    echo "ERROR: Could not get $SEGMENT"
-		    exit -1
-		else
-		    num_log=$num_log+1
-		    if [[ $VERBOSE -gt 0 ]]; then
-			echo "INFO:backup $SEGMENT to $INCREMENTALBACKUPDIR"
-		    fi
-		fi
-	    fi
-	done
+	    done
+	fi
     done
-
+    
     if [[ $VERBOSE -gt 0 ]]; then
 	if [[ $num_log = 0 ]]; then
 	    echo "INFO: There is no new archivinglog. Nothing done."
