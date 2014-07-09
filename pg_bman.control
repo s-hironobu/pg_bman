@@ -1,0 +1,5 @@
+# pg_bman extension
+comment = 'Get/Show archivging logs'
+default_version = '0.1'
+module_pathname = '$libdir/pg_bman'
+relocatable = true
