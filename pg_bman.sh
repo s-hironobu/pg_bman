@@ -12,11 +12,13 @@
 # Author: suzuki hironobu (hironobu@interdb.jp)
 # Copyright (C) 2014  suzuki hironobu
 #===========================================
+declare -i VERBOSE
+VERBOSE=1
+GZIP_MODE="ON"
 
 ##-------------------------
 ## Backup Server
 ##-------------------------
-
 BASEDIR="/home/postgres/BACKUP/"
 PG_BASEBACKUP="/usr/local/pgsql/bin/pg_basebackup"
 PG_ARCHIVEBACKUP="/usr/local/bin/pg_archivebackup"
@@ -24,7 +26,6 @@ PG_ARCHIVEBACKUP="/usr/local/bin/pg_archivebackup"
 ##-------------------------
 ## PostgreSQL Server
 ##-------------------------
-
 ARCHIVINGLOG_DIR="/home/postgres/archives"
 
 HOST="127.0.0.1"
@@ -40,17 +41,28 @@ full_backup () {
     basebackup_dir=${BASEDIR}/Basebackup${TIMESTAMP}
     mkdir -p $basebackup_dir/fullbackup
     if [[ $VERBOSE -gt 0 ]]; then
-	echo "INFO: make directory:$basebackup_dir/fullbackup"
+	echo "INFO: Make directory:$basebackup_dir/fullbackup"
 	v="-v"
     fi
 
     ## execute pg_basebackup
+    if [[ $VERBOSE -gt 0 ]]; then
+	echo "INFO: Execute pg_basebackup"
+    fi
     $PG_BASEBACKUP -h $HOST -U $USER -F t -X fetch -D $basebackup_dir/fullbackup $v
 
     ## write pg_xlog contents.
     base_archivinglogs=`tar tf $basebackup_dir/fullbackup/base.tar \
 	| grep pg_xlog | awk -F/ '{if ($2 != "") print $2}'`
     echo "$base_archivinglogs" > $basebackup_dir/fullbackup/.pg_xlog
+
+    ## gzip
+    if [[ $GZIP_MODE = "ON" ]]; then
+	if [[ $VERBOSE -gt 0 ]]; then
+	    echo "INFO: Compressing $basebackup_dir/fullbackup/base.tar using gzip."
+	fi
+	gzip $basebackup_dir/fullbackup/base.tar
+    fi
 
     echo "MESSAGE: FULL BACKUP done."
 }
@@ -188,6 +200,8 @@ show () {
 ##===========================================
 ## Other functions
 ##===========================================
+PGNAME="pg_bman.sh"
+
 usage () {
     echo "Usage:"
     echo "  $PGNAME [BACKUP|SHOW|RESTORE] {FULL|INCREMENTAL}"
@@ -197,9 +211,6 @@ usage () {
 ## Main
 ##===========================================
 TIMESTAMP=`date '+%Y%m%d-%H%M%S'`
-declare -i VERBOSE
-VERBOSE=1
-PGNAME="pg_bman.sh"
 
 COMMAND=$1
 MODE=""
