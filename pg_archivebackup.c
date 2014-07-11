@@ -104,7 +104,7 @@ write_walsegment (PGresult * res, const char *file)
       return false;
     }
 
-  chmod(file, S_IRUSR);
+  chmod(file, S_IRUSR|S_IWUSR);
   close (fd);
   return true;
 }

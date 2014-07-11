@@ -62,7 +62,6 @@ pg_bmanをソースコードのcontribで展開し、makeを実行。
 
 適当なディレクトリにpg_arcivebackupとpg_backup.shをcopy。
 
-
     $ cp pg_archivebackup /usr/local/bin
     $ cp pg_bman.sh /usr/local/bin
     $ chmod +x /usr/local/bin/pg_bman.sh
@@ -72,15 +71,16 @@ pg_bmanをソースコードのcontribで展開し、makeを実行。
     $ mkdir /home/postgres/BACKUP
 
 
-pg_bman.shにいくつかのパラメータを設定。
+pg_bman.shにいくつかのパラメータを設定。pathはabsolute pathのみ。
 
     ##-------------------------
     ## Backup Server 
     ##-------------------------
-
     BASEDIR="/home/postgres/BACKUP"
-    PG_BASEBACKUP="/usr/local/pgsql/bin/pg_basebackup"
     PG_ARCHIVEBACKUP="/usr/local/bin/pg_archivebackup"
+    PGHOME="/usr/local/pgsql93"
+    PG_BASEBACKUP=$PGHOME/bin/pg_basebackup
+    RECOVERY_CONF_SAMPLE=$PGHOME/share/recovery.conf.sample
     
     ##-------------------------
     ## PostgreSQL Server
@@ -92,7 +92,8 @@ pg_bman.shにいくつかのパラメータを設定。
     USER="postgres"
     PORT="5432"
 
-
+    # restoreのときに使うアーカイブログを置くディレクトリ。この値をrecovery.confのrestore_commandに書き込む。
+    RESTORE_ARICHIVINGLOG_DIR="/home/postgres/restore_archives"
 
 もしもアーカイブログ領域が$PGDATA内なら、pg_archivebackupコマンドに-oオプションをつけてもよい。"-o"オプションはpg_ls_dir()とpg_read_binary_file()を使う(よってExtensionが不要)。
 
@@ -119,6 +120,43 @@ pg_bman.shにいくつかのパラメータを設定。
 
 ### RESTORE
 
-未実装。
+#### 調査
+SHOWコマンドで、リストアするベースバックアップとインクリメントバックアップの番号を選ぶ。
 
+    $ pg_bman.sh SHOW
+    1:Basebackup20140710-200012 (TimeLineID=00000001)
+           0:Fullbackup
+     Incremental:
+           1:20140710-201046
+           2:20140710-202041
+    2:Basebackup20140710-210018 (TimeLineID=00000001)
+           0:Fullbackup
+      Incremental:
+           1:20140710-212040
+    3:Basebackup20140710-220009 (TimeLineID=00000001)
+           0:Fullbackup
+      Incremental:
+           1:20140711-221013
+           2:20140711-222023
+           3:20140711-223011
+           4:20140711-224041
 
+#### 準備
+BaseBackup=3, Incrementalbackup=2  (timestamp=20140711-222023)にPITRする。
+
+    $ pg_bman.sh RESTORE 3 2
+    MESSAGE: RESTORE preparation done
+
+#### リストア
+RESTOREコマンドを実行すると、ベースバックアップ、recovery.conf、必要なアーカイブログが"$BASEDIR/Restore"以下に生成するので、指示に従ってリカバリする。
+
+    How to restore:
+      (1) make $PGDATA
+            mkdir $PGDATA && chmod 700 $PGDATA
+            cd $GPDATA
+            tar xvfz $BASEDIR/Restore/basebackup/base.tar.gz
+      (2) copy recovery.conf
+            cp $BASEDIR/Restore/recovery.conf
+      (3) set archiving logs
+            mkdir /home/postgres/restore_archives
+            cp  $BASEDIR/Restore/incrementalbackup/* $RESTORE_ARICHIVINGLOG_DIR
