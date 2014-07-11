@@ -158,5 +158,5 @@ RESTOREコマンドを実行すると、ベースバックアップ、recovery.c
       (2) copy recovery.conf
             cp $BASEDIR/Restore/recovery.conf
       (3) set archiving logs
-            mkdir /home/postgres/restore_archives
+            mkdir $RESTORE_ARICHIVINGLOG_DIR
             cp  $BASEDIR/Restore/incrementalbackup/* $RESTORE_ARICHIVINGLOG_DIR
