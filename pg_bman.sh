@@ -108,7 +108,7 @@ full_backup () {
 
     ## write pg_xlog contents.
     tar tf $basebackup_dir/fullbackup/base.tar | grep pg_xlog | \
-	awk -F/ '{if ($2 != "") print $2}'  > $basebackup_dir/fullbackup/.pg_xlog
+	awk -F/ '{print $2}' | sed '/^$/d' > $basebackup_dir/fullbackup/.pg_xlog
 
     ## gzip
     if [[ $GZIP_MODE = "ON" ]]; then
