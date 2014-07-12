@@ -10,17 +10,13 @@
 # Author: suzuki hironobu (hironobu@interdb.jp)
 # Copyright (C) 2014  suzuki hironobu
 #===========================================
-declare -i VERBOSE
-VERBOSE=1
-GZIP_MODE="ON"
-
 ##-------------------------
 ## Backup Server
 ##-------------------------
 # "absolute path only"
 BASEDIR="/home/postgres/BACKUP"
 PG_ARCHIVEBACKUP="/usr/local/bin/pg_archivebackup"
-PGHOME="/usr/local/pgsql93"
+PGHOME="/usr/local/pgsql"
 PG_BASEBACKUP=$PGHOME/bin/pg_basebackup
 RECOVERY_CONF_SAMPLE=$PGHOME/share/recovery.conf.sample
 
@@ -38,9 +34,26 @@ PORT="5432"
 RESTORE_ARICHIVINGLOG_DIR="/home/postgres/restore_archives"
 
 ##===========================================
+## Global Variables
+##===========================================
+declare -i VERBOSE
+VERBOSE=1
+GZIP_MODE="ON"
+
+ARCHIVINGLOGS=""
+BASE_TIMELINE=""
+CURRENT_ARCHVINGLOGS=""
+CURRENT_TIMELINES=""
+
+declare -i BB
+declare -i IB
+
+TIMESTAMP=`date '+%Y%m%d-%H%M%S'`
+PGNAME="pg_bman.sh"
+
+##===========================================
 ## utils
 ##===========================================
-PGNAME="pg_bman.sh"
 
 usage () {
     echo "Usage: $PGNAME command [options]"
@@ -81,9 +94,8 @@ full_backup () {
     $PG_BASEBACKUP -h $HOST -U $USER -F t -X fetch -D $basebackup_dir/fullbackup $v
 
     ## write pg_xlog contents.
-    base_archivinglogs=`tar tf $basebackup_dir/fullbackup/base.tar \
-	| grep pg_xlog | awk -F/ '{if ($2 != "") print $2}'`
-    echo "$base_archivinglogs" > $basebackup_dir/fullbackup/.pg_xlog
+    tar tf $basebackup_dir/fullbackup/base.tar | grep pg_xlog | \
+	awk -F/ '{if ($2 != "") print $2}'  > $basebackup_dir/fullbackup/.pg_xlog
 
     ## gzip
     if [[ $GZIP_MODE = "ON" ]]; then
@@ -99,11 +111,6 @@ full_backup () {
 ##===========================================
 ## Incremental backup
 ##===========================================
-ARCHIVINGLOGS=""
-BASE_TIMELINE=""
-CURRENT_ARCHVINGLOGS=""
-CURRENT_TIMELINES=""
-
 listup_archivinglogs () {
     latest_basebackup=$1
     # base backup
@@ -111,11 +118,8 @@ listup_archivinglogs () {
     BASE_TIMELINE=`echo -e "$base_archivinglogs" | cut -c 1-8 | sort -r | uniq | head -1`
 
     # incremental backup
-    incbackup_archivinglogs=`ls -1 -d $latest_basebackup/incrementalbackup*/* 2>/dev/null`
-    inc_archivinglogs=""
-    if [[ $incbackup_archivinglogs ]]; then
-	inc_archivinglogs=`echo "$incbackup_archivinglogs" | awk -F/ '{print $NF}'`
-    fi
+    inc_archivinglogs=`ls -1 -d $latest_basebackup/incrementalbackup*/* 2>/dev/null | awk -F/ '{print $NF}'`
+
     # merge all archiving logs
     ARCHIVINGLOGS=`echo -e "${base_archivinglogs}\n${inc_archivinglogs}" | sort | sed '/^$/d' | uniq`
 }
@@ -128,6 +132,36 @@ listup_current_archivinglogs () {
 	exit -1
     fi  
     CURRENT_TIMELINES=`echo -e "$CURRENT_ARCHVINGLOGS" | cut -c 1-8 | sort | uniq`
+}
+
+get_archivinglog () {
+    num_log=$1
+    incrementalbackupdir=$2
+    segment=$3
+
+    ${PG_ARCHIVEBACKUP} -h ${HOST} -U ${USER} -d ${DB} -c get \
+	-a ${ARCHIVINGLOG_DIR} -w ${segment} -f ${incrementalbackupdir}/${segment}
+    if [[ $? -ne 0 ]]; then
+	echo "ERROR: Could not get $segment"
+	exit -1
+    else
+	num_log=$num_log+1
+	if [[ $VERBOSE -gt 0 ]]; then
+	    echo "INFO:backup $segment to $incrementalbackupdir"
+	fi
+    fi
+    return $num_log
+}
+
+make_incremantal_backup_dir () {
+    incrementalbackupdir=$1
+
+    if [[ ! -d $incrementalbackupdir ]]; then
+	mkdir -p $incrementalbackupdir
+	if [[ $VERBOSE -gt 0 ]]; then
+	    echo "INFO: make directory:$incrementalbackupdir"
+	fi
+    fi
 }
 
 incremental_backup () {
@@ -160,24 +194,11 @@ incremental_backup () {
 	    latest_segment=`echo -e "$ARCHIVINGLOGS" | grep ^$current_tl | sort -r | head -1`
 	    for segment in `echo -e "$CURRENT_ARCHVINGLOGS" | grep ^$current_tl | sort -r` ; do
 		if [[ $latest_segment < $segment ]]; then
-		    if [[ ! -d $incrementalbackupdir ]]; then
-			mkdir $incrementalbackupdir
-			if [[ $VERBOSE -gt 0 ]]; then
-			    echo "INFO: make directory:$incrementalbackupdir"
-			fi
-		    fi
-		    # get ArchivingLog
-		    ${PG_ARCHIVEBACKUP} -h ${HOST} -U ${USER} -d ${DB} -c get \
-			-a ${ARCHIVINGLOG_DIR} -w ${segment} -f ${incrementalbackupdir}/${segment}
-		    if [[ $? -ne 0 ]]; then
-			echo "ERROR: Could not get $segment"
-			exit -1
-		    else
-			num_log=$num_log+1
-			if [[ $VERBOSE -gt 0 ]]; then
-			    echo "INFO:backup $segment to $incrementalbackupdir"
-			fi
-		    fi
+
+		    make_incremantal_backup_dir $incrementalbackupdir
+
+		    get_archivinglog $num_log $incrementalbackupdir $segment
+		    num_log=$?
 		fi
 	    done
 	fi
@@ -196,9 +217,6 @@ incremental_backup () {
 ##===========================================
 ## SHOW
 ##===========================================
-declare -i BB
-declare -i IB
-
 show () {
     BB=1
     ## find Basebackup directories
@@ -227,6 +245,36 @@ show () {
 ##===========================================
 ## RESTORE
 ##===========================================
+prepare_base_backup () {
+    basedir=$1
+
+    if [[ -f $basedir/fullbaskup/base.tar ]]; then
+	ln -s $basedir/fullbackup/base.tar $BASEDIR/Restore/basebackup/
+    elif [[ -f $basedir/fullbackup/base.tar.gz ]]; then
+	ln -s $basedir/fullbackup/base.tar.gz $BASEDIR/Restore/basebackup/
+    else
+	echo "ERROR: There is no base backup in $basedir/fullbackup/"
+	exit -1
+    fi
+}
+
+prepare_incremental_backup () {
+    basedir=$1
+    incremental_backup_no=$2
+
+    if [[ $incremental_backup_no -ne 0 ]]; then
+	IB=1
+	for incdir in `ls -1 -d $basedir/incrementalbackup*  2>/dev/null | sort`; do
+	    if [[ $IB -le $incremental_backup_no ]]; then
+		for file in `ls $incdir/*`; do
+		    ln -s $file $BASEDIR/Restore/incrementalbackup/
+		done
+	    fi
+	    IB=$IB+1
+	done
+    fi
+}
+
 init_restore_dir () {
     if [[ ! -d $BASEDIR/Restore/basebackup ]]; then
 	mkdir -p $BASEDIR/Restore/basebackup
@@ -283,31 +331,8 @@ restore () {
 
     for basedir in `echo -e "$basebackups"`; do
 	if [[ $base_backup_no -eq $BB ]]; then
-	    
-	    if [[ -f $basedir/fullbaskup/base.tar ]]; then
-		ln -s $basedir/fullbackup/base.tar $BASEDIR/Restore/basebackup/
-	    elif [[ -f $basedir/fullbackup/base.tar.gz ]]; then
-		ln -s $basedir/fullbackup/base.tar.gz $BASEDIR/Restore/basebackup/
-	    fi
-
-	    ## find incremental backup
-	    if [[ $incremental_backup_no -ne 0 ]]; then
-		IB=1
-		incbackups=`ls -1 -d $basedir/incrementalbackup*  2>/dev/null | sort`
-		if [[ $incbackups ]]; then
-		    for incdir in `echo -e "$incbackups"`; do
-			if [[ $IB -le $incremental_backup_no ]]; then
-			    archivelogs=`ls $incdir/*`
-			    for file in `echo -e "$archivelogs"`; do
-				ln -s $file $BASEDIR/Restore/incrementalbackup/
-			    done
-			fi
-			IB=$IB+1
-		    done
-		fi
-	    fi
-
-	    ## make recovery.conf
+	    prepare_base_backup $basedir
+	    prepare_incremental_backup $basedir $incremental_backup_no
 	    make_recovery_conf
 
 	    echo "MESSAGE: RESTORE preparation done"
@@ -324,8 +349,6 @@ restore () {
 ##===========================================
 ## Main
 ##===========================================
-TIMESTAMP=`date '+%Y%m%d-%H%M%S'`
-
 COMMAND=$1
 
 if [[ $COMMAND = "BACKUP" ]]; then
