@@ -75,6 +75,19 @@ get_basebackups () {
     echo $basebackups
 }
 
+check_paths () {
+    paths=`echo -e "${BASEDIR}\n${PG_ARCHIVEBACKUP}\n
+    ${PGHOME}\n${PG_BASEBACKUP}\n${RECOVERY_CONF_SAMPLE}\n
+    ${ARCHIVINGLOG_DIR}\n${RESTORE_ARICHIVINGLOG_DIR}"`
+
+    for path in `echo -e $paths`; do
+	if [[ $path =~ ^[.] || $path =~ ^[~] ]]; then
+	    echo "ERROR: $path is not valid(Absolute path only)."
+	    exit -1
+	fi
+    done
+}
+
 ##===========================================
 ## Full backup
 ##===========================================
@@ -354,6 +367,8 @@ restore () {
 ## Main
 ##===========================================
 COMMAND=$1
+
+check_paths
 
 if [[ $COMMAND = "BACKUP" ]]; then
     if [[ $# -eq 2 ]]; then
