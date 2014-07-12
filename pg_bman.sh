@@ -299,6 +299,8 @@ make_recovery_conf () {
 }
 
 how_to_restore () {
+    incremental_backup_no=$1
+
     echo "How to restore:"
     echo "  (1) make \$PGDATA"
     echo "        mkdir \$PGDATA && chmod 700 \$PGDATA"
@@ -310,9 +312,11 @@ how_to_restore () {
     fi
     echo "  (2) copy recovery.conf"
     echo "        cp $BASEDIR/Restore/recovery.conf"
-    echo "  (3) set archiving logs"
-    echo "        mkdir $RESTORE_ARICHIVINGLOG_DIR"
-    echo "        cp  $BASEDIR/Restore/incrementalbackup/* $RESTORE_ARICHIVINGLOG_DIR"
+    if [[ $incremental_backup_no -ne 0 ]];then
+	echo "  (3) set archiving logs"
+	echo "        mkdir $RESTORE_ARICHIVINGLOG_DIR"
+	echo "        cp  $BASEDIR/Restore/incrementalbackup/* $RESTORE_ARICHIVINGLOG_DIR"
+    fi
 }
 
 restore () {
@@ -336,7 +340,7 @@ restore () {
 	    make_recovery_conf
 
 	    echo "MESSAGE: RESTORE preparation done"
-	    how_to_restore
+	    how_to_restore $incremental_backup_no
 	    exit 0
 	fi
 	BB=$BB+1
