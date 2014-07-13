@@ -4,7 +4,7 @@ MODULE_big = pg_bman
 OBJS = pg_bman.o
 
 EXTENSION = pg_bman
-DATA = pg_bman--0.1.sql pg_bman--unpackaged--0.1.sql
+DATA = pg_bman--1.0.sql pg_bman--unpackaged--1.0.sql
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

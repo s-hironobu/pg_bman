@@ -1,4 +1,4 @@
-/* contrib/pg_bman/pg_bman--unpackaged--0.1.sql */
+/* contrib/pg_bman/pg_bman--unpackaged--1.0.sql */
 
 \echo Use "CREATE EXTENSION pg_bman" to load this file. \quit
 
