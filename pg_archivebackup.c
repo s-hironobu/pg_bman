@@ -19,6 +19,7 @@
 #include <libpq-fe.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <assert.h>
 
 static void	exit_nicely(PGconn *);
 static bool	write_walsegment(PGresult *, const char *);
@@ -27,13 +28,14 @@ static int	str_cmp(const char *, const char *);
 static void	init_sysval(void);
 static void	set_params(int, char **);
 static bool	check_params(void);
+static void	free_sysval(void);
 static void	usage(void);
 
 
 #define DEFAULT_USER "postgres"
 #define DEFAULT_DB "postgres"
 #define DEFAULT_PORT 5432
-#define BUFF_SIZE 128
+#define BUFF_SIZE 256
 #define WALSEGMENT_LEN 24
 
 #define GET_CMD 0x01
@@ -311,6 +313,24 @@ check_params(void)
 /*
  */
 static void
+free_sysval(void)
+{
+	free(sysval.host);
+	free(sysval.user);
+	if (sysval.password != NULL)
+		free(sysval.password);
+	free(sysval.db);
+	if (sysval.archivinglog_dir != NULL)
+		free(sysval.archivinglog_dir);
+	if (sysval.walsegment != NULL)
+		free(sysval.walsegment);
+	if (sysval.filename != NULL)
+		free(sysval.filename);
+}
+
+/*
+ */
+static void
 make_conninfo(char *conninfo)
 {
 
@@ -354,9 +374,12 @@ static		bool
 get_archivelog(PGconn * conn)
 {
 	PGresult       *res;
-	char		buff      [BUFF_SIZE];
+	char           *buff;
 	const char     *paramValues[1];
 
+	assert(strlen(sysval.archivinglog_dir) > 0);
+	assert(strlen(sysval.walsegment) > 0);
+	buff = (char *)calloc(1, strlen(sysval.archivinglog_dir) + strlen(sysval.walsegment) + 2);
 	sprintf(buff, "%s/%s", sysval.archivinglog_dir, sysval.walsegment);
 	paramValues[0] = buff;
 
@@ -378,6 +401,7 @@ get_archivelog(PGconn * conn)
 		return false;
 
 	PQclear(res);
+	free(buff);
 	return true;
 }
 
@@ -482,6 +506,7 @@ main(int argc, char **argv)
 	}
 
 	PQfinish(conn);
+	free_sysval();
 
 	return 0;
 }
