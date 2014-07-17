@@ -146,15 +146,17 @@ RESTORE command sets up base backup, archiving logs you need, and recovery.conf 
     $ pg_bman.sh RESTORE 3 2
     MESSAGE: RESTORE preparation done
 
-#### step3: Restore
+#### step3: Restore on the PostgreSQL server
 
     How to restore:
       (1) make $PGDATA
             mkdir $PGDATA && chmod 700 $PGDATA
             cd $PGDATA
-            tar xvfz $REPOSITORY/Restore/basebackup/base.tar.gz
+            scp BackupServer:$REPOSITORY/Restore/basebackup/base.tar.gz .
+            tar xvfz base.tar.gz
       (2) copy recovery.conf
-            cp $REPOSITORY/Restore/recovery.conf $PGDATA
+            scp BackupServer:$REPOSITORY/Restore/recovery.conf $PGDATA
       (3) set archiving logs
             mkdir $RESTORE_ARICHIVINGLOG_DIR
-            cp  $REPOSITORY/Restore/incrementalbackup/* $RESTORE_ARICHIVINGLOG_DIR
+            cd $RESTORE_ARICHIVINGLOG_DIR
+            scp  BackupServer:$REPOSITORY/Restore/incrementalbackup/* .
