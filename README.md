@@ -1,84 +1,87 @@
 pg_bman
 =======
 
-Yet another backup tool for PostgreSQL
+Yet another hot back up tool for PostgreSQL. 
+
+
+`pg_bman` is similar to [pg_rman](http://sourceforge.net/projects/pg-rman/), but can take backup from a remote server.
+`pg_bman` is similar to [pgbarman](http://www.pgbarman.org/), but requires neither ssh nor rsync for take backup.
+
+>To restore a database, ftp or scp is required.
 
 リモートホストにバックアップできるpg_rmanみたいなツール。
-
-sshを使わず、標準の通信手段(libpq)だけでオンラインのフルバックアップとインクリメンタルバックアップするにはどうすべきか、検討するため、とりあえず大急ぎで作ってみた。
-
+標準の通信プロトコル(libpq)だけでオンラインのフルバックアップとインクリメンタルバックアップができます。sshもrsyncもftpも不要です。
 
 ## SETUP
 
-### PostgreSQL Server側
+      PostgreSQL    BackupServer
+    192.168.1.100   192.168.1.200
+      +---+    libpq    +---+
+      |   |============>|   |
+      +---+             +---+
 
-アーカイブログ領域を作成。
+### on PostgreSQL Server
+
+Make Arichiving Log directory.
 
     $ mkdir /home/postgres/archives
 
-
-postgresql.confを編集。
+Edit "postgresql.conf".
 
     max_wal_senders = 5
-    wal_level = hot_standby # or archive
+    wal_level = archive
     archive_mode = on
     archive_command = 'cp %p /home/postgres/archives/%f'
 
+Edit "pg_hba.conf".
 
-pg_hba.confの編集。
-
-    host    all             all  xxx.xxx.xxx.0/24       trust # バックアップServerからアクセス
-    host    replication     all  xxx.xxx.xxx.0/24       trust #　バックアップServerからアクセス
+    host    all             all  192.168.1.200/32       trust
+    host    replication     all  192.168.1.200/32       trust
 
 
-Extensionのインストール。アーカイブログ領域を$PGDATA以下にする場合は、このExtensionのインストールは不要。
+Extract `pg_bman` to contrib directory, and run make and make install.
 
     $ cd ~/contrib/
     $ unzip pg_bman.zip
     $ cd pg_bman
     $ make && make install
-
-
+    
     $ psql sampledb
     psql (9.3.0)
     Type "help" for help.
-
+    
     sampledb=# CREATE EXTENSION pg_bman;
 
+### on Backup Server
 
+Install PostgreSQL binary and the source code (here, installation directories are "/usr/local/pgsql/" and "/usr/local/src/postgresql/").
 
-### Backup Server側
+Extract `pg_bman` to contrib directory, and run make.
 
-PostgreSQLをインストールしておく。ここではインストール領域は/usr/local/pgsqlと仮定。
-ソースコードも準備しておく。ここでは/usr/local/src/postgresqlと仮定。
-
-
-pg_bmanをソースコードのcontribで展開し、makeを実行。
-
-    $ cd ~/contrib/
+    $ cd /usr/local/src/postgresql/contrib/
     $ unzip pg_bman.zip
     $ cd pg_bman
     $ make
 
-適当なディレクトリにpg_arcivebackupとpg_backup.shをcopy。
+Copy `pg_backup.sh` and `pg_arcivebackup` to the directory you like (here, installation directory is "/usr/local/bin").
 
     $ cp pg_archivebackup /usr/local/bin
     $ cp pg_bman.sh /usr/local/bin
     $ chmod +x /usr/local/bin/pg_bman.sh
 
-バックアップ領域を決めてディレクトリを作成。ここでは/home/postgres/BACKUPとする。
+
+Create backup repository (here, "home/postgres/BACKUP").
 
     $ mkdir /home/postgres/BACKUP
 
-
-pg_bman.shにいくつかのパラメータを設定。pathはabsolute pathのみ。
+Set the parameters on `pg_bman.sh`. Absolute paths only.
 
     ##-------------------------
     ## Backup Server 
     ##-------------------------
-    BASEDIR="/home/postgres/BACKUP"
+    REPOSITORY="/home/postgres/BACKUP"
     PG_ARCHIVEBACKUP="/usr/local/bin/pg_archivebackup"
-    PGHOME="/usr/local/pgsql93"
+    PGHOME="/usr/local/pgsql"
     PG_BASEBACKUP=$PGHOME/bin/pg_basebackup
     RECOVERY_CONF_SAMPLE=$PGHOME/share/recovery.conf.sample
     
@@ -92,36 +95,29 @@ pg_bman.shにいくつかのパラメータを設定。pathはabsolute pathの�
     USER="postgres"
     PORT="5432"
 
-    # restoreのときに使うアーカイブログを置くディレクトリ。この値をrecovery.confのrestore_commandに書き込む。
-    RESTORE_ARICHIVINGLOG_DIR="/home/postgres/restore_archives"
-
-もしもアーカイブログ領域が$PGDATA内なら、pg_archivebackupコマンドに-oオプションをつけてもよい。"-o"オプションはpg_ls_dir()とpg_read_binary_file()を使う(よってExtensionが不要)。
-
-    PG_ARCHIVEBACKUP="/usr/local/bin/pg_archivebackup -o "
+    # archival storage directory which to be written to the restore_command on recovery.conf
+    ARCHIVAL_STORAGE_DIR="/home/postgres/restore_archives"
 
 
-## 使い方
+## HOW TO USE
 
 ### FULL BACKUP
 
     $ pg_bman.sh BACKUP FULL
 
-
 #### INCREMENTAL BACKUP
 
-
     $ pg_bman.sh BACKUP INCREMENTAL
-
 
 ### SHOW BACKUP LIST
 
     $ pg_bman.sh SHOW
 
-
 ### RESTORE
 
-#### 調査
-SHOWコマンドで、リストアするベースバックアップとインクリメントバックアップの番号を選ぶ。
+#### step1: Choose `Basebackup_no` and `Incrementalbackup_no`.
+
+Choose `Basebackup_no` and `Incrementalbackup_no` for doing PITR.
 
     $ pg_bman.sh SHOW
     1:Basebackup20140710-200012 (TimeLineID=00000001)
@@ -137,26 +133,28 @@ SHOWコマンドで、リストアするベースバックアップとインク�
            0:Fullbackup
       Incremental:
            1:20140711-221013
-           2:20140711-222023
+           2:20140711-222023  <-- Our choice.
            3:20140711-223011
            4:20140711-224041
 
-#### 準備
-BaseBackup=3, Incrementalbackup=2  (timestamp=20140711-222023)にPITRする。
+Here, we choose `basebackup_no = 3`, and `incrementalbackup_no = 2` (timestamp=20140711-222023).
+
+#### step2: Prepare BaseBackup, archivinglogs, and recovery.conf
+
+RESTORE command sets up base backup, archiving logs you need, and recovery.conf under "$REPOSITORY/Restore" directory.
 
     $ pg_bman.sh RESTORE 3 2
     MESSAGE: RESTORE preparation done
 
-#### リストア
-RESTOREコマンドを実行すると、ベースバックアップ、recovery.conf、必要なアーカイブログが"$BASEDIR/Restore"以下に生成するので、指示に従ってリカバリする。
+#### step3: Restore
 
     How to restore:
       (1) make $PGDATA
             mkdir $PGDATA && chmod 700 $PGDATA
-            cd $GPDATA
-            tar xvfz $BASEDIR/Restore/basebackup/base.tar.gz
+            cd $PGDATA
+            tar xvfz $REPOSITORY/Restore/basebackup/base.tar.gz
       (2) copy recovery.conf
-            cp $BASEDIR/Restore/recovery.conf
+            cp $REPOSITORY/Restore/recovery.conf $PGDATA
       (3) set archiving logs
             mkdir $RESTORE_ARICHIVINGLOG_DIR
-            cp  $BASEDIR/Restore/incrementalbackup/* $RESTORE_ARICHIVINGLOG_DIR
+            cp  $REPOSITORY/Restore/incrementalbackup/* $RESTORE_ARICHIVINGLOG_DIR

@@ -14,7 +14,7 @@
 ## Backup Server
 ##-------------------------
 # "absolute path only"
-BASEDIR="/home/postgres/BACKUP"
+REPOSITORY="/home/postgres/BACKUP"
 PG_ARCHIVEBACKUP="/usr/local/bin/pg_archivebackup"
 PGHOME="/usr/local/pgsql"
 PG_BASEBACKUP=$PGHOME/bin/pg_basebackup
@@ -67,7 +67,7 @@ usage () {
 }
 
 get_basebackups () {
-    basebackups=`ls -d $BASEDIR/Basebackup* | sort`
+    basebackups=`ls -d $REPOSITORY/Basebackup* | sort`
     if [[ ! $basebackups ]]; then
 	echo "Error: Basebackup not found."
 	exit -1
@@ -76,9 +76,9 @@ get_basebackups () {
 }
 
 check_paths () {
-    paths=`echo -e "${BASEDIR}\n${PG_ARCHIVEBACKUP}\n
+    paths=`echo -e "${REPOSITORY}\n${PG_ARCHIVEBACKUP}\n
     ${PGHOME}\n${PG_BASEBACKUP}\n${RECOVERY_CONF_SAMPLE}\n
-    ${ARCHIVINGLOG_DIR}\n${RESTORE_ARICHIVINGLOG_DIR}"`
+    ${ARCHIVINGLOG_DIR}\n${ARCHIVAL_STORAGE_DIR}"`
 
     for path in `echo -e $paths`; do
 	if [[ $path =~ ^[.] || $path =~ ^[~] ]]; then
@@ -93,7 +93,7 @@ check_paths () {
 ##===========================================
 full_backup () {
     v=""
-    basebackup_dir=${BASEDIR}/Basebackup${TIMESTAMP}
+    basebackup_dir=${REPOSITORY}/Basebackup${TIMESTAMP}
     mkdir -p $basebackup_dir/fullbackup
     if [[ $VERBOSE -gt 0 ]]; then
 	echo "INFO: Make directory:$basebackup_dir/fullbackup"
@@ -147,6 +147,14 @@ listup_current_archivinglogs () {
     CURRENT_TIMELINES=`echo -e "$CURRENT_ARCHVINGLOGS" | cut -c 1-8 | sort | uniq`
 }
 
+pg_switch_xlog () {
+    $PG_ARCHIVEBACKUP -h $HOST -U $USER -d $DB -c switch
+    if [[ $? -ne 0 ]]; then
+	echo "Error: Could not execute pg_switch_xlog()"
+	exit -1
+    fi
+}
+
 get_archivinglog () {
     num_log=$1
     incrementalbackupdir=$2
@@ -181,7 +189,7 @@ incremental_backup () {
     declare -i num_log
     num_log=0
     ## Latest Basebackup directory
-    latest_basebackup=`ls -d $BASEDIR/Basebackup* | sort -r | head -1`
+    latest_basebackup=`ls -d $REPOSITORY/Basebackup* | sort -r | head -1`
     if [[ ! $latest_basebackup ]]; then
 	echo "Error: Basebackup not found."
 	exit -1
@@ -192,11 +200,7 @@ incremental_backup () {
     listup_archivinglogs $latest_basebackup
 
     ## execute pg_switch_xlog()
-    $PG_ARCHIVEBACKUP -h $HOST -U $USER -d $DB -c switch
-    if [[ $? -ne 0 ]]; then
-	echo "Error: Could not execute pg_switch_xlog()"
-	exit -1
-    fi  
+    pg_switch_xlog
 
     ## list up current archiveing logs
     listup_current_archivinglogs
@@ -207,9 +211,7 @@ incremental_backup () {
 	    latest_segment=`echo -e "$ARCHIVINGLOGS" | grep ^$current_tl | sort -r | head -1`
 	    for segment in `echo -e "$CURRENT_ARCHVINGLOGS" | grep ^$current_tl | sort -r` ; do
 		if [[ $latest_segment < $segment ]]; then
-
 		    make_incremantal_backup_dir $incrementalbackupdir
-
 		    get_archivinglog $num_log $incrementalbackupdir $segment
 		    num_log=$?
 		fi
@@ -262,9 +264,9 @@ prepare_base_backup () {
     basedir=$1
 
     if [[ -f $basedir/fullbaskup/base.tar ]]; then
-	ln -s $basedir/fullbackup/base.tar $BASEDIR/Restore/basebackup/
+	ln -s $basedir/fullbackup/base.tar $REPOSITORY/Restore/basebackup/
     elif [[ -f $basedir/fullbackup/base.tar.gz ]]; then
-	ln -s $basedir/fullbackup/base.tar.gz $BASEDIR/Restore/basebackup/
+	ln -s $basedir/fullbackup/base.tar.gz $REPOSITORY/Restore/basebackup/
     else
 	echo "ERROR: There is no base backup in $basedir/fullbackup/"
 	exit -1
@@ -280,7 +282,7 @@ prepare_incremental_backup () {
 	for incdir in `ls -1 -d $basedir/incrementalbackup*  2>/dev/null | sort`; do
 	    if [[ $IB -le $incremental_backup_no ]]; then
 		for file in `ls $incdir/*`; do
-		    ln -s $file $BASEDIR/Restore/incrementalbackup/
+		    ln -s $file $REPOSITORY/Restore/incrementalbackup/
 		done
 	    fi
 	    IB=$IB+1
@@ -289,16 +291,16 @@ prepare_incremental_backup () {
 }
 
 init_restore_dir () {
-    if [[ ! -d $BASEDIR/Restore/basebackup ]]; then
-	mkdir -p $BASEDIR/Restore/basebackup
+    if [[ ! -d $REPOSITORY/Restore/basebackup ]]; then
+	mkdir -p $REPOSITORY/Restore/basebackup
     fi
-    if [[ ! -d $BASEDIR/Restore/incrementalbackup ]]; then
-	mkdir -p $BASEDIR/Restore/incrementalbackup
+    if [[ ! -d $REPOSITORY/Restore/incrementalbackup ]]; then
+	mkdir -p $REPOSITORY/Restore/incrementalbackup
     fi
 
-    rm -f $BASEDIR/Restore/basebackup/*
-    rm -f $BASEDIR/Restore/recovery.conf
-    rm -f $BASEDIR/Restore/incrementalbackup/*
+    rm -f $REPOSITORY/Restore/basebackup/*
+    rm -f $REPOSITORY/Restore/recovery.conf
+    rm -f $REPOSITORY/Restore/incrementalbackup/*
 }
 
 make_recovery_conf () {
@@ -306,8 +308,8 @@ make_recovery_conf () {
 	echo "WARNING: recovery.conf.sample no found"
     else
 	cat $RECOVERY_CONF_SAMPLE \
-	    | sed -e "s@\#restore_command =@restore_command = \'cp $RESTORE_ARICHIVINGLOG_DIR/%f %p\' \#@g" \
-	    > $BASEDIR/Restore/recovery.conf
+	    | sed -e "s@\#restore_command =@restore_command = \'cp $ARCHIVAL_STORAGE_DIR/%f %p\' \#@g" \
+	    > $REPOSITORY/Restore/recovery.conf
     fi
 }
 
@@ -317,18 +319,20 @@ how_to_restore () {
     echo "How to restore:"
     echo "  (1) make \$PGDATA"
     echo "        mkdir \$PGDATA && chmod 700 \$PGDATA"
-    echo "        cd \$GPDATA"
+    echo "        cd \$PGDATA"
+    echo "scp BackupServer:$REPOSITORY/Restore/basebackup/base.tar.gz ."
     if [[ $GZIP_MODE = "ON" ]]; then
-	echo "        tar xvfz $BASEDIR/Restore/basebackup/base.tar.gz"
+	echo "        tar xvfz base.tar.gz"
     else
-	echo "        tar xvf $BASEDIR/Restore/basebackup/base.tar"
+	echo "        tar xvf base.tar"
     fi
     echo "  (2) copy recovery.conf"
-    echo "        cp $BASEDIR/Restore/recovery.conf"
+    echo "        scp BackupServer:$REPOSITORY/Restore/recovery.conf $PGDATA"
     if [[ $incremental_backup_no -ne 0 ]];then
 	echo "  (3) set archiving logs"
-	echo "        mkdir $RESTORE_ARICHIVINGLOG_DIR"
-	echo "        cp  $BASEDIR/Restore/incrementalbackup/* $RESTORE_ARICHIVINGLOG_DIR"
+	echo "        mkdir $ARCHIVAL_STORAGE_DIR"
+        echo "        cd $RESTORE_ARICHIVINGLOG_DIR"
+	echo "        scp BackupServer:$REPOSITORY/Restore/incrementalbackup/* ."
     fi
 }
 
@@ -354,7 +358,7 @@ restore () {
 
 	    echo "MESSAGE: RESTORE preparation done"
 	    how_to_restore $incremental_backup_no
-	    exit 0
+	    return 0
 	fi
 	BB=$BB+1
     done
