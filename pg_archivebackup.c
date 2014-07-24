@@ -53,7 +53,7 @@ typedef struct {
 	int		command;
 	char           *walsegment;
 	char           *filename;
-	bool		original;
+	bool		extension;
 }		sysval_t;
 
 
@@ -61,7 +61,7 @@ static sysval_t	sysval;
 
 
 /*
- */
+ * */
 static void
 exit_nicely(PGconn * conn)
 {
@@ -70,7 +70,7 @@ exit_nicely(PGconn * conn)
 }
 
 /*
- */
+ * */
 static		bool
 write_walsegment(PGresult * res, const char *file)
 {
@@ -103,7 +103,7 @@ write_walsegment(PGresult * res, const char *file)
 }
 
 /*
- */
+ * */
 static		bool
 check_walsegment_name(char *filename, int offset)
 {
@@ -115,7 +115,7 @@ check_walsegment_name(char *filename, int offset)
 }
 
 /*
- */
+ * */
 static int
 str_cmp(const char *s1, const char *s2)
 {
@@ -129,7 +129,7 @@ str_cmp(const char *s1, const char *s2)
 }
 
 /*
- */
+ * */
 static void
 init_sysval(void)
 {
@@ -144,11 +144,11 @@ init_sysval(void)
 	sysval.walsegment = NULL;
 	sysval.filename = NULL;
 
-	sysval.original = false;
+	sysval.extension = false;
 }
 
 /*
- */
+ * */
 static void
 set_params(int argc, char **argv)
 {
@@ -160,7 +160,7 @@ set_params(int argc, char **argv)
 			usage();
 			exit(0);
 		}
-	while ((c = getopt(argc, argv, "h:p:U:W:d:c:a:w:f:o")) != -1) {
+	while ((c = getopt(argc, argv, "h:p:U:W:d:c:a:w:f:e:")) != -1) {
 		switch (c) {
 		case 'h':	/* host */
 			if ((sysval.host =
@@ -258,10 +258,16 @@ set_params(int argc, char **argv)
 			}
 			break;
 
-		case 'o':	/* original mode */
-			sysval.original = true;
+		case 'e':	/* extension mode */
+			if (str_cmp(optarg, "on") == 0)
+				sysval.extension = true;
+			else if (str_cmp(optarg, "off") == 0)
+				sysval.extension = false;
+			else {
+				fprintf(stderr, "Error: option %s is no valid. only \"ON\" or \"OFF\"\n", optarg);
+				exit(-1);
+			}
 			break;
-
 		default:
 			fprintf(stderr, "ERROR: option error: -%c is not valid\n", optopt);
 			usage();
@@ -271,7 +277,7 @@ set_params(int argc, char **argv)
 }
 
 /*
- */
+ * */
 static		bool
 check_params(void)
 {
@@ -311,7 +317,7 @@ check_params(void)
 }
 
 /*
- */
+ * */
 static void
 free_sysval(void)
 {
@@ -329,7 +335,7 @@ free_sysval(void)
 }
 
 /*
- */
+ * */
 static void
 make_conninfo(char *conninfo)
 {
@@ -344,7 +350,7 @@ make_conninfo(char *conninfo)
 }
 
 /*
- */
+ * */
 static void
 usage(void)
 {
@@ -359,17 +365,17 @@ usage(void)
 	fprintf(stderr, "\t-p port       (default=5432)\n");
 	fprintf(stderr, "\t-d db         (default=postgres)\n");
 	fprintf(stderr, "\t-W password   (optional)\n");
+	fprintf(stderr, "\t-e [OFF|ON]   (optional: use extension. default OFF)\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "\t-a archivinglog_dir\n");
 	fprintf(stderr, "\t-w archivinglog\n");
 	fprintf(stderr, "\t-f filename\n");
 	fprintf(stderr, "\n");
-	fprintf(stderr, "\t-o            (use original functions[pg_ls_dir|pg_read_binary_file])\n");
 	fprintf(stderr, "\t--help\n");
 }
 
 /*
- */
+ * */
 static		bool
 get_archivelog(PGconn * conn)
 {
@@ -383,13 +389,12 @@ get_archivelog(PGconn * conn)
 	sprintf(buff, "%s/%s", sysval.archivinglog_dir, sysval.walsegment);
 	paramValues[0] = buff;
 
-	if (sysval.original)
-		res = PQexecParams(conn, "SELECT pg_read_binary_file($1)", 1, NULL,
-				   paramValues, NULL, NULL, 1);
-	else
+	if (sysval.extension)
 		res = PQexecParams(conn, "SELECT pg_get_archive($1)", 1, NULL,
 				   paramValues, NULL, NULL, 1);
-
+	else
+		res = PQexecParams(conn, "SELECT pg_read_binary_file($1)", 1, NULL,
+				   paramValues, NULL, NULL, 1);
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK) {
 		fprintf(stderr, "SELECT failed: %s", PQerrorMessage(conn));
@@ -406,7 +411,7 @@ get_archivelog(PGconn * conn)
 }
 
 /*
- */
+ * */
 static		bool
 show_archivelogs(PGconn * conn)
 {
@@ -416,16 +421,15 @@ show_archivelogs(PGconn * conn)
 
 	paramValues[0] = sysval.archivinglog_dir;
 
-	if (sysval.original)
-		res =
-			PQexecParams(conn, "SELECT pg_ls_dir($1)AS list ORDER BY list",
-				     1, NULL, paramValues, NULL, NULL, 1);
-	else
+	if (sysval.extension)
 		res =
 			PQexecParams(conn,
 			"SELECT pg_show_archives($1) AS list ORDER BY list",
 				     1, NULL, paramValues, NULL, NULL, 1);
-
+	else
+		res =
+			PQexecParams(conn, "SELECT pg_ls_dir($1) AS list ORDER BY list",
+				     1, NULL, paramValues, NULL, NULL, 1);
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK) {
 		fprintf(stderr, "SELECT failed: %s", PQerrorMessage(conn));
@@ -447,7 +451,7 @@ show_archivelogs(PGconn * conn)
 }
 
 /*
- */
+ * */
 static		bool
 switch_xlog(PGconn * conn)
 {
@@ -467,7 +471,7 @@ switch_xlog(PGconn * conn)
 }
 
 /*
- */
+ * */
 int
 main(int argc, char **argv)
 {

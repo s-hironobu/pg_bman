@@ -40,7 +40,7 @@ typedef struct {
 
 
 /*
- */
+ * */
 static		bool
 check_walsegment_name(char *filename, int offset)
 {
@@ -52,7 +52,7 @@ check_walsegment_name(char *filename, int offset)
 }
 
 /*
- */
+ * */
 static bytea   *
 read_archive_file(const char *filename, int64 bytes_to_read)
 {
@@ -63,12 +63,12 @@ read_archive_file(const char *filename, int64 bytes_to_read)
 	if (bytes_to_read > (MaxAllocSize - VARHDRSZ))
 		ereport(ERROR,
 			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			 errmsg("requested length too large")));
+			 errmsg("Requested length too large.")));
 
 	if ((file = AllocateFile(filename, PG_BINARY_R)) == NULL)
 		ereport(ERROR,
 			(errcode_for_file_access(),
-			 errmsg("could not open file \"%s\" for reading: %m",
+			 errmsg("Could not open file \"%s\" for reading: %m",
 				filename)));
 
 	buf = (bytea *) palloc((Size) bytes_to_read + VARHDRSZ);
@@ -78,7 +78,7 @@ read_archive_file(const char *filename, int64 bytes_to_read)
 	if (ferror(file))
 		ereport(ERROR,
 			(errcode_for_file_access(),
-		       errmsg("could not read file \"%s\": %m", filename)));
+		       errmsg("Could not read file \"%s\": %m", filename)));
 
 	SET_VARSIZE(buf, nbytes + VARHDRSZ);
 
@@ -88,7 +88,7 @@ read_archive_file(const char *filename, int64 bytes_to_read)
 }
 
 /*
- */
+ * */
 static char    *
 convert_and_check_pathname(text * arg)
 {
@@ -102,18 +102,18 @@ convert_and_check_pathname(text * arg)
 		if (path_contains_parent_reference(filename))
 			ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("reference to parent directory (\"..\") not allowed"))));
+				 (errmsg("Reference to parent directory (\"..\") not allowed."))));
 
 	} else if (!path_is_relative_and_below_cwd(filename))
 		ereport(ERROR,
 			(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-		(errmsg("path must be in or below the current directory"))));
+			 (errmsg("Path must be in or below the current directory."))));
 
 	return filename;
 }
 
 /*
- */
+ * */
 Datum
 pg_get_archive(PG_FUNCTION_ARGS)
 {
@@ -123,21 +123,21 @@ pg_get_archive(PG_FUNCTION_ARGS)
 	if (!superuser())
 		ereport(ERROR,
 			(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-			 (errmsg("must be superuser to read files"))));
+			 (errmsg("Must be superuser to read files."))));
 
 	filename = convert_and_check_pathname(filename_t);
 
 	if (check_walsegment_name(filename, (strlen(filename) - WALSEGMENT_LEN)) == false)
 		ereport(ERROR,
 			(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-			 (errmsg("read only archiving log segment"))));
+			 (errmsg("Only read an archive log segment."))));
 
 	PG_RETURN_BYTEA_P(read_archive_file(filename, XLOG_SEG_SIZE));
 }
 
 
 /*
- */
+ * */
 Datum
 pg_show_archives(PG_FUNCTION_ARGS)
 {
@@ -148,7 +148,7 @@ pg_show_archives(PG_FUNCTION_ARGS)
 	if (!superuser())
 		ereport(ERROR,
 			(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-		  (errmsg("must be superuser to get directory listings"))));
+		 (errmsg("Must be superuser to get directory listings."))));
 
 	if (SRF_IS_FIRSTCALL()) {
 		MemoryContext	oldcontext;
@@ -164,7 +164,7 @@ pg_show_archives(PG_FUNCTION_ARGS)
 		if (!fctx->dirdesc)
 			ereport(ERROR,
 				(errcode_for_file_access(),
-			       errmsg("could not open directory \"%s\": %m",
+			       errmsg("Could not open directory \"%s\": %m",
 				      fctx->location)));
 
 		funcctx->user_fctx = fctx;
