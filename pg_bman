@@ -14,7 +14,7 @@
 ## Global Options
 ##-------------------------
 # If you installed the pg_bman extension on the PostgreSQL, set "ON"
-EXTENSION_MODE="ON"
+EXTENSION_MODE="OFF"
 GZIP_MODE="ON"
 
 ##-------------------------
