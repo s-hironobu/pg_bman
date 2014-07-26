@@ -63,15 +63,6 @@ Unzip `pg_bman.zip` to the contrib directory, make && make install.
     host    all             all  192.168.1.200/32       trust
     host    replication     all  192.168.1.200/32       trust
 
-Make an archiving log directory where you like.
-
-    $ mkdir -p /home/postgres/archives
-
-And edit "postgresql.conf".
-
-    archive_command = 'cp %p /home/postgres/archives/%f'
-
-
 ### on Backup Server
 
 #### Step1: Install programs.
