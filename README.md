@@ -37,9 +37,7 @@ If you cannot make it under $PGDATA, make a directory where you can, and link to
 If you cannot link to a directory under $PGDATA, make a directory where you can, and install the pg_bman extension.
 
     $ mkdir /home/postgres/archives
-
-Unzip `pg_bman.zip` to the contrib directory, make && make install.
-
+    
     $ cd ~/contrib/
     $ unzip pg_bman.zip
     $ cd pg_bman
