@@ -16,6 +16,9 @@
 #include "funcapi.h"
 #include "storage/fd.h"
 #include "miscadmin.h"
+#if PG_VERSION_NUM >= 110000
+#include "access/xlog.h"
+#endif
 #include <regex.h>
 
 PG_MODULE_MAGIC;
@@ -132,7 +135,11 @@ pg_get_archive(PG_FUNCTION_ARGS)
 			(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 			 (errmsg("Only read an archive log segment."))));
 
+#if PG_VERSION_NUM >= 110000
+	PG_RETURN_BYTEA_P(read_archive_file(filename, wal_segment_size));
+#else
 	PG_RETURN_BYTEA_P(read_archive_file(filename, XLOG_SEG_SIZE));
+#endif
 }
 
 
